@@ -1,0 +1,37 @@
+name: Publicar release
+
+# Publica un Release a partir de los paquetes que haya en la carpeta dist/ de una rama `release/v<version>`
+# (p. ej. `release/v0.1.0-beta.1` crea la etiqueta v0.1.0-beta.1). Asi se publican builds sin token personal:
+# se sube la rama con los ZIP y este workflow crea el Release con el permiso del propio repo (publico: minutos gratis).
+# Cuando termina borra la rama de transporte.
+on:
+  push:
+    branches: ["release/**"]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME#release/}"
+          VERSION="${TAG#v}"
+          ls -la dist/
+          test -n "$(ls dist/ 2>/dev/null)" || { echo "::error::La carpeta dist/ esta vacia"; exit 1; }
+          NOTES="Build jugable para playtest. Windows: descomprime el ZIP y abre PixelCombat.exe (si Windows avisa de aplicacion desconocida: Mas informacion > Ejecutar de todos modos). Lee LEEME-PLAYTEST.md (como mandar tu informe)."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --target main --prerelease --title "PixelCombat $VERSION (beta cerrada)" --notes "$NOTES"
+          fi
+      - name: Delete the transport branch
+        run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$GITHUB_REF_NAME"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
